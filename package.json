@@ -11,7 +11,10 @@
     "start": "node sec-analyzer.js",
     "test": "echo \"No tests specified\" && exit 0",
     "install-deps": "npm install",
-    "build": "echo \"No build step required\" && exit 0"
+    "build": "echo \"No build step required\" && exit 0",
+    "pipeline": "node sec-analyzer.js pipeline --graph js_graph.json --output-dir security-analysis",
+    "quick-scan": "node sec-analyzer.js detect --git-diff HEAD~1 && node sec-analyzer.js analyze --changes changes.json --graph js_graph.json && node sec-analyzer.js scan --context context.json && node sec-analyzer.js report --review-results scan-results.json --format json --output security-report",
+    "ci-pipeline": "node run-pipeline.js"
   },
   "keywords": [
     "security",
