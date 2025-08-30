@@ -1,160 +1,389 @@
-# PHP Code Graph Explorer
+# 🔒 Security Analysis CLI
 
-A powerful interactive visualization tool for exploring PHP code relationships and dependencies. Built as a Cloudflare Worker for serverless deployment.
+A comprehensive security analysis pipeline that uses AI-powered multi-model review to analyze code changes for security vulnerabilities.
 
-## 🚀 Live Demo
+## 🚀 Features
 
-Access the live application at: [https://floral-snow-8582.alpinresorts-com.workers.dev](https://floral-snow-8582.alpinresorts-com.workers.dev)
+- **Change Detection**: Automatically detect code changes from git diffs or file analysis
+- **AI-Powered Analysis**: Uses multiple specialized AI models for comprehensive security review
+- **Graph Integration**: Leverages code dependency graphs for context-aware analysis
+- **Multi-Model Consensus**: Coordinates multiple AI models to reach consensus on findings
+- **Automated Fixes**: Applies safe automated security fixes
+- **Rich Reporting**: Generates detailed HTML/JSON reports with actionable recommendations
+- **CI/CD Integration**: Designed for seamless integration into development pipelines
 
-## 📋 Features
+## 🤖 AI Models Used
 
-### Core Functionality
-- **Interactive Graph Visualization**: Dynamic force-directed graph using D3.js
-- **File Upload**: Drag & drop or click to upload `php_graph.json` files
-- **Real-time Search**: Search nodes by name, ID, or type with instant filtering
-- **Advanced Filtering**: Filter by node types (Classes, Methods, Functions)
-- **Connection Depth Control**: Customize how many levels of connections to display
-- **Node Management**: Add/remove nodes dynamically with visual feedback
+- **Qwen3 Coder** (`Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8`) - Primary analysis
+- **Kimi K2** (`moonshotai/Kimi-K2-Instruct-75k`) - Injection attacks specialist
+- **GPT OSS 120B** (`openai/gpt-oss-120b`) - Authentication specialist
+- **Qwen3 Thinking** (`Qwen/Qwen3-235B-A22B-Thinking-2507`) - General security analysis
 
-### UI Components
-- **Responsive Sidebar**: Resizable panel with comprehensive controls
-- **Graph Controls**: Zoom, pan, fit-to-view, expand/cluster operations
-- **Statistics Dashboard**: Real-time metrics (nodes, edges, depth)
-- **Node Details**: Rich tooltips with file locations and connection counts
-- **Search Results**: Dedicated search results panel with pagination
-- **Children Explorer**: View direct connections of selected nodes
+## 📋 Installation
 
-### Graph Features
-- **Multiple Edge Types**: Visual distinction between extends, instantiates, static calls, and method calls
-- **Node Coloring**: Color-coded nodes by type (classes, methods, functions)
-- **Interactive Tooltips**: Detailed information on hover
-- **Drag & Drop**: Move nodes around for better layout
-- **Zoom & Pan**: Full navigation controls
-- **Node Highlighting**: Click to center and highlight nodes
+### Prerequisites
+- Node.js 16+
+- Git
+- Chutes AI API key
 
-## 🛠️ Technology Stack
+### Setup
+```bash
+# Clone or download the repository
+git clone <repository-url>
+cd sec-analyzer
 
-- **Frontend**: HTML5, CSS3, JavaScript (ES6+)
-- **Visualization**: D3.js v7.8.5
-- **Backend**: Cloudflare Workers (serverless)
-- **Deployment**: Cloudflare Pages/Workers
-- **Styling**: Modern CSS with gradients and animations
+# Install dependencies
+npm install
 
-## 📁 Project Structure
+# Make executable
+chmod +x sec-analyzer.js
 
-```
-graph-vis/
-├── worker.js          # Cloudflare Worker (main application)
-├── index.html         # Local development version
-├── php_graph.json     # Sample data file
-├── anal.py           # Analysis script
-├── graph_php.py      # PHP graph generation
-├── js_graph.json     # Alternative data format
-└── README.md         # This file
+# Initialize configuration
+./sec-analyzer.js init
+
+# Set your Chutes AI API key
+export CHUTES_API_KEY="your-api-key-here"
 ```
 
-## 🚀 Getting Started
+## 🔧 Usage
 
-### Using the Live Version
-1. Visit the live demo link above
-2. Upload your `php_graph.json` file by dragging & dropping or clicking "Choose File"
-3. Explore the interactive graph visualization
-4. Use search, filters, and controls to navigate your code structure
+### Quick Start Pipeline
+```bash
+# Run complete security analysis pipeline
+sec-analyzer pipeline --graph php_graph.json --git-diff HEAD~1
+```
 
-### Local Development
-1. Clone this repository
-2. Open `index.html` in your browser
-3. Upload a `php_graph.json` file to start exploring
+### Individual Commands
 
-### Cloudflare Worker Deployment
-1. Copy `worker.js` content
-2. Create a new Cloudflare Worker
-3. Paste the code and deploy
-4. Configure your domain's DNS to point to the worker
+#### 1. Detect Changes
+```bash
+# Detect changes from git diff
+sec-analyzer detect --git-diff HEAD~1
 
-## 📊 Data Format
+# Detect changes from specific files
+sec-analyzer detect --files "src/auth.php,src/database.php"
 
-The application expects a JSON file with this structure:
+# Custom output location
+sec-analyzer detect --git-diff HEAD~1 --output my-changes.json
+```
 
+#### 2. Build Security Context
+```bash
+sec-analyzer analyze \
+  --changes changes.json \
+  --graph php_graph.json \
+  --output context.json
+```
+
+#### 3. Security Scan
+```bash
+sec-analyzer scan \
+  --context context.json \
+  --model Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8 \
+  --output scan-results.json
+```
+
+#### 4. Multi-Model Review
+```bash
+sec-analyzer review \
+  --scan-results scan-results.json \
+  --context context.json \
+  --models "moonshotai/Kimi-K2-Instruct-75k,openai/gpt-oss-120b" \
+  --output review-results.json
+```
+
+#### 5. Generate Report
+```bash
+# HTML Report (default)
+sec-analyzer report \
+  --review-results review-results.json \
+  --context context.json \
+  --format html \
+  --output security-report
+
+# JSON Report
+sec-analyzer report \
+  --review-results review-results.json \
+  --format json \
+  --output security-report.json
+```
+
+#### 6. Apply Automated Fixes
+```bash
+# Apply only safe fixes
+sec-analyzer fix \
+  --report security-report.json \
+  --apply-safe
+
+# Dry run (show what would be fixed)
+sec-analyzer fix \
+  --report security-report.json \
+  --dry-run
+```
+
+## 📊 Pipeline Integration
+
+### GitHub Actions Example
+```yaml
+name: Security Analysis
+on: [pull_request]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Security Analyzer
+        run: |
+          npm install -g sec-analyzer
+          sec-analyzer init
+
+      - name: Run Security Analysis
+        run: |
+          sec-analyzer pipeline \
+            --graph php_graph.json \
+            --git-diff ${{ github.event.pull_request.base.sha }} \
+            --output-dir security-results
+
+      - name: Upload Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-report
+          path: security-results/
+```
+
+### GitLab CI Example
+```yaml
+security_scan:
+  stage: test
+  script:
+    - npm install -g sec-analyzer
+    - sec-analyzer init
+    - sec-analyzer pipeline --graph php_graph.json --git-diff $CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+  artifacts:
+    reports:
+      junit: security-results/report.xml
+    paths:
+      - security-results/
+  only:
+    - merge_requests
+```
+
+## 🎯 Analysis Capabilities
+
+### Vulnerability Types Detected
+- **SQL Injection**: Dynamic query analysis and prepared statement detection
+- **XSS (Cross-Site Scripting)**: Output encoding and input sanitization review
+- **CSRF**: Token validation and SameSite cookie analysis
+- **Authentication Bypass**: Session management and auth logic review
+- **Authorization Issues**: Access control and privilege escalation
+- **File Upload Vulnerabilities**: Path traversal and content validation
+- **Command Injection**: Shell command and system call analysis
+- **Information Disclosure**: Error handling and logging review
+- **Cryptography Issues**: Weak algorithms and key management
+- **Race Conditions**: Concurrent execution and synchronization
+
+### Code Languages Supported
+- PHP
+- JavaScript/TypeScript
+- Python
+- Java
+- C/C++
+
+## 📈 Graph Integration
+
+The CLI integrates with your existing code dependency graph (`php_graph.json`) to:
+
+- **Understand Relationships**: Map how components interact and depend on each other
+- **Trace Attack Paths**: Identify potential vulnerability chains
+- **Assess Blast Radius**: Determine impact scope of security issues
+- **Prioritize Fixes**: Focus on high-impact security hotspots
+- **Context-Aware Analysis**: Provide relevant context for each finding
+
+## 🤖 Multi-Model AI Analysis
+
+### Primary Analysis Model
+- **Qwen3 Coder**: Performs initial comprehensive security scan
+- Analyzes code patterns, identifies vulnerabilities
+- Provides detailed technical findings
+
+### Specialist Models
+- **Kimi K2**: Focuses on injection attacks (SQL, NoSQL, command injection)
+- **GPT OSS 120B**: Specializes in authentication and authorization issues
+- **Qwen3 Thinking**: Provides general security analysis and recommendations
+
+### Consensus Building
+- Models review each other's findings
+- Identify false positives and missed issues
+- Reach consensus on severity and impact
+- Provide comprehensive remediation strategies
+
+## 🔧 Automated Fixes
+
+### Safe Automated Fixes
+- **SQL Injection**: Convert to prepared statements
+- **XSS**: Add output escaping
+- **Input Validation**: Add filter functions
+- **Session Security**: Configure secure session settings
+- **File Upload**: Add validation and content checking
+
+### Manual Fix Suggestions
+- **Library Updates**: Identify outdated dependencies
+- **Architecture Changes**: Suggest secure design patterns
+- **Configuration Updates**: Security hardening recommendations
+- **Code Refactoring**: Complex vulnerability fixes
+
+## 📊 Reporting
+
+### Report Formats
+- **HTML**: Interactive web report with charts and visualizations
+- **JSON**: Structured data for integration with other tools
+- **PDF**: Printable reports for documentation
+
+### Report Contents
+- Executive Summary
+- Risk Assessment Matrix
+- Detailed Findings with Code Examples
+- Expert Model Reviews
+- Remediation Roadmap
+- Compliance Recommendations
+- Monitoring Suggestions
+
+## ⚙️ Configuration
+
+### Environment Variables
+```bash
+# Required
+CHUTES_API_KEY=your-chutes-api-key
+
+# Optional
+SEC_ANALYZER_CONFIG=/path/to/config.json
+SEC_ANALYZER_CACHE_DIR=/tmp/sec-cache
+```
+
+### Configuration File (`.sec-analyzer/config.json`)
 ```json
 {
-  "nodes": [
-    {
-      "id": "unique_identifier",
-      "label": "Display Name",
-      "type": "class|method|function",
-      "file": "path/to/file.php",
-      "line": 123,
-      "in_degree": 5,
-      "out_degree": 3
+  "ai": {
+    "provider": "chutes",
+    "models": {
+      "primary": "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+      "review": ["moonshotai/Kimi-K2-Instruct-75k"]
     }
-  ],
-  "edges": [
-    {
-      "source": "node_id_1",
-      "target": "node_id_2",
-      "type": "extends|instantiates|static_call|method_call",
-      "weight": 1
+  },
+  "analysis": {
+    "maxFileSize": "10MB",
+    "excludePatterns": ["node_modules/**", "vendor/**"]
+  },
+  "reporting": {
+    "formats": ["html", "json"],
+    "riskThresholds": {
+      "critical": 9,
+      "high": 7,
+      "medium": 4
     }
-  ],
-  "stats": {
-    "total_nodes": 1500,
-    "total_edges": 3200,
-    "classes": 234,
-    "methods": 876,
-    "functions": 390
   }
 }
 ```
 
-### Data Generation
+## 🚨 Security Considerations
 
-The sample JSON files in this repository were generated using the included analysis scripts:
+- **API Key Security**: Store API keys securely, never commit to version control
+- **Data Privacy**: No code is stored permanently, analysis is performed in memory
+- **Network Security**: All AI communications use HTTPS with API authentication
+- **False Positives**: AI analysis may produce false positives, manual review recommended
+- **Rate Limiting**: Respect API rate limits to avoid service disruption
 
-- **`php_graph.json`**: Generated by running `graph_php.py` on the AlpinResorts **odin** repository
-- **`js_graph.json`**: Generated by running `graph_js.py` on the AlpinResorts **angular** repository
+## 📝 Examples
 
-These scripts analyze the codebase and extract:
-- Class hierarchies and inheritance relationships
-- Method calls and dependencies
-- Function definitions and usage
-- File locations and line numbers
-- Connection degrees (in/out degree analysis)
+### Basic Security Scan
+```bash
+# Initialize
+sec-analyzer init
 
-## 🎯 Use Cases
+# Detect changes
+sec-analyzer detect --git-diff HEAD~1 --output changes.json
 
-- **Code Architecture Review**: Understand complex codebases at a glance
-- **Dependency Analysis**: Identify tightly coupled components
-- **Refactoring Planning**: Visualize impact of code changes
-- **Documentation**: Generate visual representations of code structure
-- **Onboarding**: Help new developers understand project architecture
+# Analyze with context
+sec-analyzer analyze --changes changes.json --graph php_graph.json --output context.json
 
-## 🔧 Configuration
+# Scan for vulnerabilities
+sec-analyzer scan --context context.json --output scan-results.json
 
-### Connection Depth
-- **Depth**: How many levels of connections to show (0-5)
-- **Connections per Level**: Maximum nodes to display at each level (1-10)
+# Multi-model review
+sec-analyzer review --scan-results scan-results.json --context context.json --output review-results.json
 
-### Graph Controls
-- **Clear**: Remove all nodes from view
-- **Center**: Fit all nodes in viewport
-- **Expand**: Increase spacing between nodes
-- **Cluster**: Reduce spacing between nodes
+# Generate report
+sec-analyzer report --review-results review-results.json --output security-report.html
 
-## 🌟 Key Features Explained
+# Apply safe fixes
+sec-analyzer fix --report security-report.json --apply-safe
+```
 
-### Smart Node Loading
-- Automatically loads top 5 most connected classes on startup
-- Dynamically adds connected nodes based on depth settings
-- Prevents duplicate nodes and edges
+### CI/CD Integration
+```bash
+# One-command pipeline
+sec-analyzer pipeline \
+  --graph php_graph.json \
+  --git-diff origin/main \
+  --output-dir ./security-analysis \
+  --skip-fixes
+```
 
-### Advanced Search
-- Real-time filtering as you type
-- Multi-criteria search (name, ID, type)
-- Filter by node type with visual indicators
+## 🐛 Troubleshooting
 
-### Interactive Exploration
-- Click nodes to see their direct connections
-- Double-click to center view on specific nodes
-- Drag nodes to reorganize layout
-- Hover for detailed information
+### Common Issues
+
+**API Connection Failed**
+```bash
+# Check API key
+echo $CHUTES_API_KEY
+
+# Test connection
+curl -H "Authorization: Bearer $CHUTES_API_KEY" https://llm.chutes.ai/v1/models
+```
+
+**Git Diff Not Working**
+```bash
+# Ensure you're in a git repository
+git status
+
+# Check git history
+git log --oneline -10
+```
+
+**Memory Issues with Large Codebases**
+```bash
+# Increase Node.js memory limit
+NODE_OPTIONS="--max-old-space-size=4096" sec-analyzer pipeline --graph php_graph.json
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+## 📄 License
+
+MIT License - see LICENSE file for details
+
+## 🆘 Support
+
+- **Issues**: [GitHub Issues](https://github.com/your-org/sec-analyzer/issues)
+- **Documentation**: [Wiki](https://github.com/your-org/sec-analyzer/wiki)
+- **Discussions**: [GitHub Discussions](https://github.com/your-org/sec-analyzer/discussions)
+
+---
+
+**Made with ❤️ for secure software development**

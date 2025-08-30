@@ -1,0 +1,354 @@
+# 🔒 GitLab CI Security Analysis Pipeline for PHP Projects
+# This job runs security analysis but doesn't block the pipeline
+
+stages:
+  - build
+  - test
+  - security
+  - deploy
+
+# =====================================================================================
+# SECURITY ANALYSIS JOB (Non-blocking)
+# =====================================================================================
+
+security_analysis:
+  stage: security
+  image: node:18
+  allow_failure: true  # This job won't fail the pipeline
+  only:
+    - merge_requests
+    - main
+    - develop
+  except:
+    - tags
+  dependencies: []  # Don't depend on other jobs
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: security-results/coverage.xml
+      # Custom security report (GitLab will try to parse this)
+      sast:
+        path: security-results/gl-sast-report.json
+    paths:
+      - security-results/
+    expire_in: 1 week
+    when: always
+  variables:
+    # Security analysis should not fail builds
+    ALLOW_FAILURE: "true"
+    # GitLab CI variables
+    CHUTES_API_KEY: $CHUTES_API_KEY
+    GRAPH_DATA_URL: $GRAPH_DATA_URL
+    # PHP-specific settings
+    COMPOSER_ALLOW_SUPERUSER: 1
+    PHP_VERSION: "8.1"
+
+  before_script:
+    # Install system dependencies for PHP analysis
+    - apt-get update -qq && apt-get install -y -qq git curl unzip python3 python3-pip php-cli php-mbstring php-xml php-zip
+
+    # Install Python dependencies if anal.py needs them
+    - pip3 install --quiet astroid networkx matplotlib
+
+    # Install Composer
+    - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+    # Setup Node.js environment
+    - npm install
+    - chmod +x sec-analyzer.js
+
+    # Initialize security analyzer
+    - ./sec-analyzer.js init
+
+  script:
+    - echo "🔒 Starting Security Analysis for PHP Project"
+    - echo "📋 Repository: $CI_PROJECT_NAME"
+    - echo "🌿 Branch: $CI_COMMIT_REF_NAME"
+    - echo "📝 Commit: $CI_COMMIT_SHA"
+    - echo "👤 Author: $GITLAB_USER_NAME"
+
+    # =====================================================================================
+    # STEP 1: Generate/Update Graph Data using graph_php.py
+    # =====================================================================================
+    - echo "📊 Step 1: Generating/Updating graph data with graph_php.py"
+
+    - |
+      if [ -f "graph_php.py" ]; then
+        echo "🔍 Found graph_php.py - running comprehensive PHP analysis..."
+        python3 graph_php.py
+        if [ -f "php_graph.json" ]; then
+          echo "✅ Graph data updated successfully with graph_php.py"
+        else
+          echo "⚠️  graph_php.py completed but php_graph.json not found, running fallback generator..."
+          ./generate-php-graph.sh
+        fi
+      elif [ -f "anal.py" ]; then
+        echo "🔍 Found anal.py - running analysis..."
+        python3 anal.py
+        if [ -f "php_graph.json" ]; then
+          echo "✅ Graph data updated successfully with anal.py"
+        else
+          echo "⚠️  anal.py completed but php_graph.json not found, running fallback generator..."
+          ./generate-php-graph.sh
+        fi
+      else
+        echo "⚠️  No graph_php.py or anal.py found, using fallback graph generator..."
+        ./generate-php-graph.sh
+      fi
+
+    # Verify graph data exists
+    - |
+      if [ ! -f "php_graph.json" ]; then
+        echo "❌ No graph data available - security analysis may be limited"
+        echo "GRAPH_AVAILABLE=false" >> security.env
+      else
+        echo "✅ Graph data ready for analysis"
+        GRAPH_SIZE=$(stat -f%z php_graph.json 2>/dev/null || stat -c%s php_graph.json 2>/dev/null || echo "unknown")
+        echo "📊 Graph file size: $GRAPH_SIZE bytes"
+        echo "GRAPH_AVAILABLE=true" >> security.env
+      fi
+
+    # =====================================================================================
+    # STEP 2: Determine what to analyze
+    # =====================================================================================
+    - |
+      if [ -n "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" ]; then
+        echo "🔍 Analyzing merge request changes"
+        BASE_REF="$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+        ANALYSIS_TYPE="merge_request"
+      else
+        echo "🔍 Analyzing recent commits"
+        BASE_REF="HEAD~1"
+        ANALYSIS_TYPE="push"
+      fi
+
+    # =====================================================================================
+    # STEP 3: Run the security analysis pipeline
+    # =====================================================================================
+    - |
+      echo "🚀 Step 3: Running security analysis pipeline..."
+      ./sec-analyzer.js pipeline \
+        --graph php_graph.json \
+        --git-diff "$BASE_REF" \
+        --output-dir security-results
+
+    # =====================================================================================
+    # STEP 4: Check analysis results
+    # =====================================================================================
+    - |
+      if [ -f "security-results/security-report.json" ]; then
+        echo "✅ Security analysis completed"
+
+        # Extract summary information
+        CRITICAL_ISSUES=$(jq '.executiveSummary.criticalIssues // 0' security-results/security-report.json)
+        HIGH_ISSUES=$(jq '.executiveSummary.highRiskIssues // 0' security-results/security-report.json)
+        TOTAL_FINDINGS=$(jq '.executiveSummary.totalFindings // 0' security-results/security-report.json)
+        OVERALL_RISK=$(jq -r '.executiveSummary.overallRisk // "Unknown"' security-results/security-report.json)
+
+        echo "📊 Analysis Summary:"
+        echo "   🔴 Critical Issues: $CRITICAL_ISSUES"
+        echo "   🟠 High Risk Issues: $HIGH_ISSUES"
+        echo "   📊 Total Findings: $TOTAL_FINDINGS"
+        echo "   🎯 Overall Risk: $OVERALL_RISK"
+
+        # Create GitLab-compatible SAST report
+        ./create-gitlab-sast-report.sh
+
+        # Set pipeline variables for other jobs to use
+        echo "Setting pipeline variables..."
+        echo "SECURITY_CRITICAL_ISSUES=$CRITICAL_ISSUES" >> security.env
+        echo "SECURITY_HIGH_ISSUES=$HIGH_ISSUES" >> security.env
+        echo "SECURITY_TOTAL_FINDINGS=$TOTAL_FINDINGS" >> security.env
+        echo "SECURITY_OVERALL_RISK=$OVERALL_RISK" >> security.env
+        echo "ANALYSIS_TYPE=$ANALYSIS_TYPE" >> security.env
+
+      else
+        echo "⚠️  Security analysis did not complete successfully"
+        echo "SECURITY_ANALYSIS_FAILED=true" >> security.env
+      fi
+
+  after_script:
+    # =====================================================================================
+    # STEP 5: Generate merge request comment
+    # =====================================================================================
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request" ] && [ -f "security-results/security-report.json" ]; then
+        echo "📝 Generating merge request comment..."
+
+        CRITICAL=$(jq '.executiveSummary.criticalIssues // 0' security-results/security-report.json)
+        HIGH=$(jq '.executiveSummary.highRiskIssues // 0' security-results/security-report.json)
+        TOTAL=$(jq '.executiveSummary.totalFindings // 0' security-results/security-report.json)
+        RISK=$(jq -r '.executiveSummary.overallRisk // "Unknown"' security-results/security-report.json)
+
+        COMMENT="## 🔒 Security Analysis Results
+
+📊 **Summary:**
+- **Critical Issues:** $CRITICAL
+- **High Risk Issues:** $HIGH
+- **Total Findings:** $TOTAL
+- **Overall Risk:** $RISK
+
+### 📋 Details
+"
+
+        if [ "$CRITICAL" -gt 0 ]; then
+          COMMENT="$COMMENT🚨 **Critical security issues detected!**
+- Immediate attention required
+- Review the security report for details
+- Consider blocking deployment until resolved
+
+"
+        elif [ "$HIGH" -gt 0 ]; then
+          COMMENT="$COMMENT⚠️ **High-risk security issues found**
+- Review recommended before deployment
+- Consider addressing critical items
+
+"
+        elif [ "$TOTAL" -gt 0 ]; then
+          COMMENT="$COMMENT✅ **Security issues detected**
+- Review the detailed report
+- Address findings based on priority
+
+"
+        else
+          COMMENT="$COMMENT✅ **No security issues detected**
+- Code appears secure
+- Continue with deployment
+
+"
+        fi
+
+        COMMENT="$COMMENT### 🔗 Reports
+- [📊 Full Security Report](\${CI_PROJECT_URL}/-/jobs/\${CI_JOB_ID}/artifacts/file/security-results/security-report.html)
+- [📄 JSON Report](\${CI_PROJECT_URL}/-/jobs/\${CI_JOB_ID}/artifacts/file/security-results/security-report.json)
+- [📈 Pipeline Results](\${CI_PROJECT_URL}/-/pipelines/\${CI_PIPELINE_ID})
+
+### 🤖 Analysis Details
+- **Analysis Type:** $ANALYSIS_TYPE
+- **Base Reference:** $BASE_REF
+- **Models Used:** Qwen3 Coder, Kimi K2, GPT OSS 120B
+- **Graph Data:** $([ -f "php_graph.json" ] && echo "✅ Available" || echo "❌ Not available")
+
+_Security analysis performed by AI-powered multi-model review_"
+
+        # Save comment for potential use
+        echo "$COMMENT" > mr_comment.md
+
+      fi
+
+  # =====================================================================================
+  # Export variables for other jobs
+  # =====================================================================================
+  artifacts:
+    reports:
+      dotenv: security.env
+    paths:
+      - security.env
+      - mr_comment.md
+    expire_in: 1 hour
+    when: always
+
+# =====================================================================================
+# OPTIONAL: BLOCKING SECURITY GATE (if you want to enforce security)
+# =====================================================================================
+
+security_gate:
+  stage: security
+  image: alpine:latest
+  allow_failure: false  # This WILL fail the pipeline if security issues are critical
+  only:
+    - merge_requests
+    - main
+  except:
+    - tags
+  dependencies:
+    - security_analysis
+  script:
+    - |
+      echo "🚪 Checking Security Gate..."
+
+      # Read security results from previous job
+      if [ -f "security.env" ]; then
+        source security.env
+
+        echo "📊 Security Metrics:"
+        echo "   Critical Issues: $SECURITY_CRITICAL_ISSUES"
+        echo "   High Risk Issues: $SECURITY_HIGH_ISSUES"
+        echo "   Total Findings: $SECURITY_TOTAL_FINDINGS"
+        echo "   Overall Risk: $SECURITY_OVERALL_RISK"
+
+        # Define your security policy
+        MAX_CRITICAL_ALLOWED=0
+        MAX_HIGH_ALLOWED=5
+
+        if [ "$SECURITY_CRITICAL_ISSUES" -gt "$MAX_CRITICAL_ALLOWED" ]; then
+          echo "🚫 SECURITY GATE FAILED: Too many critical issues ($SECURITY_CRITICAL_ISSUES > $MAX_CRITICAL_ALLOWED)"
+          echo "📋 Review the security report and fix critical issues before merging"
+          exit 1
+        fi
+
+        if [ "$SECURITY_HIGH_ISSUES" -gt "$MAX_HIGH_ALLOWED" ]; then
+          echo "🚫 SECURITY GATE FAILED: Too many high-risk issues ($SECURITY_HIGH_ISSUES > $MAX_HIGH_ALLOWED)"
+          echo "📋 Review the security report and address high-risk issues"
+          exit 1
+        fi
+
+        echo "✅ Security Gate PASSED"
+        echo "🎉 Pipeline can continue"
+
+      else
+        echo "⚠️  No security analysis results found"
+        echo "✅ Allowing pipeline to continue (no security data available)"
+      fi
+
+# =====================================================================================
+# EXAMPLE: DEPLOYMENT WITH SECURITY CHECKS
+# =====================================================================================
+
+deploy_staging:
+  stage: deploy
+  script:
+    - echo "🚀 Deploying to staging..."
+    - echo "🔒 Security Status: $SECURITY_OVERALL_RISK"
+    # Add your deployment commands here
+  environment:
+    name: staging
+    url: https://staging.example.com
+  only:
+    - develop
+  dependencies:
+    - security_analysis
+
+deploy_production:
+  stage: deploy
+  script:
+    - |
+      echo "🚀 Deploying to production..."
+      echo "🔒 Security Status: $SECURITY_OVERALL_RISK"
+
+      # Extra security check for production
+      if [ "$SECURITY_CRITICAL_ISSUES" -gt 0 ]; then
+        echo "🚫 BLOCKING PRODUCTION DEPLOYMENT: Critical security issues detected"
+        exit 1
+      fi
+
+      # Add your production deployment commands here
+      echo "✅ Production deployment completed"
+  environment:
+    name: production
+    url: https://example.com
+  only:
+    - main
+  when: manual  # Require manual approval for production
+  dependencies:
+    - security_analysis
+    - security_gate
+
+# =====================================================================================
+# HELPER SCRIPTS (Create these files in your repository)
+# =====================================================================================
+
+# create-gitlab-sast-report.sh
+# generate-php-graph.sh
+# (These will be created as separate files)

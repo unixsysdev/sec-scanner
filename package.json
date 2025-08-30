@@ -1,0 +1,62 @@
+{
+  "name": "sec-analyzer",
+  "version": "1.0.0",
+  "description": "Security Analysis CLI for code changes with AI-powered multi-model review",
+  "main": "sec-analyzer.js",
+  "type": "module",
+  "bin": {
+    "sec-analyzer": "./sec-analyzer.js"
+  },
+  "scripts": {
+    "start": "node sec-analyzer.js",
+    "test": "echo \"No tests specified\" && exit 0",
+    "install-deps": "npm install",
+    "build": "echo \"No build step required\" && exit 0"
+  },
+  "keywords": [
+    "security",
+    "analysis",
+    "ai",
+    "cli",
+    "vulnerability",
+    "code-review",
+    "devsecops"
+  ],
+  "author": "Security Analysis CLI",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "@babel/parser": "^7.23.0",
+    "@babel/traverse": "^7.23.0",
+    "commander": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/sec-analyzer"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/sec-analyzer/issues"
+  },
+  "homepage": "https://github.com/your-org/sec-analyzer#readme",
+  "files": [
+    "lib/",
+    "sec-analyzer.js",
+    "README.md"
+  ],
+  "preferGlobal": true,
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}

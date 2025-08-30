@@ -1,0 +1,605 @@
+# 🔒 Security Analysis Pipeline Examples
+# Copy and adapt these examples to your CI/CD platform
+
+## GitHub Actions Example
+name: Security Analysis Pipeline
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install Security Analyzer
+        run: |
+          npm install
+          chmod +x sec-analyzer.js
+
+      - name: Initialize Security Analyzer
+        run: ./sec-analyzer.js init
+        env:
+          CHUTES_API_KEY: ${{ secrets.CHUTES_API_KEY }}
+
+      - name: Download Graph Data
+        run: |
+          # Download graph data from your storage
+          # Options:
+          # 1. From GitHub Releases: https://github.com/YOUR-ORG/YOUR-REPO/releases/download/latest/php_graph.json
+          # 2. From cloud storage: https://storage.googleapis.com/YOUR-BUCKET/php_graph.json
+          # 3. From your CI artifacts: Copy from previous build
+          # 4. Generate fresh: ./generate-php-graph.sh
+
+          curl -o php_graph.json "${GRAPH_DATA_URL:-https://storage.googleapis.com/your-security-data/php_graph.json}" || {
+            echo "Failed to download graph data, generating fresh..."
+            chmod +x ./generate-php-graph.sh
+            ./generate-php-graph.sh
+          }
+
+      - name: Run Security Analysis
+        run: |
+          ./sec-analyzer.js pipeline \
+            --graph php_graph.json \
+            --git-diff ${{ github.event.pull_request.base.sha || 'HEAD~1' }} \
+            --output-dir security-results
+        env:
+          CHUTES_API_KEY: ${{ secrets.CHUTES_API_KEY }}
+
+      - name: Upload Security Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-analysis-report
+          path: security-results/
+          retention-days: 30
+
+      - name: Comment PR with Results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            // Read the security report
+            const reportPath = path.join('security-results', 'security-report.html');
+            if (fs.existsSync(reportPath)) {
+              const reportContent = fs.readFileSync(reportPath, 'utf8');
+
+              // Extract summary from HTML (simplified)
+              const findingsMatch = reportContent.match(/Total Findings: (\d+)/);
+              const criticalMatch = reportContent.match(/Critical Issues: (\d+)/);
+
+              const findings = findingsMatch ? findingsMatch[1] : '0';
+              const critical = criticalMatch ? criticalMatch[1] : '0';
+
+              let comment = '## 🔒 Security Analysis Results\\n\\n';
+              comment += `📊 **Findings:** ${findings}\\n`;
+              comment += `🚨 **Critical Issues:** ${critical}\\n\\n`;
+
+              if (parseInt(critical) > 0) {
+                comment += '⚠️ **Action Required:** Critical security issues found. Please review the detailed report.\\n\\n';
+              } else if (parseInt(findings) > 0) {
+                comment += '✅ **Review Needed:** Security issues detected. Please review findings.\\n\\n';
+              } else {
+                comment += '✅ **All Clear:** No security issues detected.\\n\\n';
+              }
+
+              comment += '[📋 View Full Report](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId + ')\\n';
+
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }
+
+      - name: Fail on Critical Issues
+        if: github.event_name == 'pull_request'
+        run: |
+          # Read the JSON report to check for critical issues
+          if [ -f "security-results/security-report.json" ]; then
+            CRITICAL_COUNT=$(jq '.executiveSummary.criticalIssues // 0' security-results/security-report.json)
+            if [ "$CRITICAL_COUNT" -gt 0 ]; then
+              echo "🚨 Critical security issues found: $CRITICAL_COUNT"
+              echo "📋 Review the security report for details"
+              exit 1
+            fi
+          fi
+
+## GitLab CI Example
+stages:
+  - security
+
+security_analysis:
+  stage: security
+  image: node:18
+  before_script:
+    - npm install
+    - chmod +x sec-analyzer.js
+    - ./sec-analyzer.js init
+  script:
+    - |
+      # Download or generate graph data
+      if [ -n "$GRAPH_DATA_URL" ]; then
+        curl -o php_graph.json "$GRAPH_DATA_URL"
+      else
+        echo "Generate your graph data here"
+        # ./generate-graph.sh > php_graph.json
+      fi
+
+      # Run security analysis
+      ./sec-analyzer.js pipeline \
+        --graph php_graph.json \
+        --git-diff ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main} \
+        --output-dir security-results
+  artifacts:
+    reports:
+      # GitLab will show these in the MR
+      coverage_report:
+        coverage_format: cobertura
+        path: security-results/coverage.xml
+    paths:
+      - security-results/
+    expire_in: 1 week
+  only:
+    - merge_requests
+  except:
+    - main
+  dependencies: []
+  allow_failure: false
+  environment:
+    name: security-analysis
+  variables:
+    CHUTES_API_KEY: $CHUTES_API_KEY
+    GRAPH_DATA_URL: $GRAPH_DATA_URL
+
+## Jenkins Pipeline Example
+pipeline {
+    agent {
+        docker {
+            image 'node:18'
+            args '-u root'
+        }
+    }
+
+    environment {
+        CHUTES_API_KEY = credentials('chutes-api-key')
+        GRAPH_DATA_URL = credentials('graph-data-url') ?: 'https://storage.googleapis.com/your-security-data/php_graph.json'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Setup Security Analyzer') {
+            steps {
+                sh '''
+                    npm install
+                    chmod +x sec-analyzer.js
+                    ./sec-analyzer.js init
+                '''
+            }
+        }
+
+        stage('Download Graph Data') {
+            steps {
+                sh '''
+                    curl -o php_graph.json "$GRAPH_DATA_URL" || {
+                        echo "Failed to download graph data"
+                        # Generate locally if download fails
+                        # ./generate-graph.sh > php_graph.json
+                    }
+                '''
+            }
+        }
+
+        stage('Security Analysis') {
+            steps {
+                sh '''
+                    ./sec-analyzer.js pipeline \
+                        --graph php_graph.json \
+                        --git-diff origin/main \
+                        --output-dir security-results
+                '''
+            }
+        }
+
+        stage('Publish Results') {
+            steps {
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'security-results',
+                    reportFiles: 'security-report.html',
+                    reportName: 'Security Analysis Report',
+                    reportTitles: 'Security Analysis Report'
+                ])
+
+                // Archive artifacts
+                archiveArtifacts artifacts: 'security-results/**', fingerprint: true
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                script {
+                    def reportFile = 'security-results/security-report.json'
+                    if (fileExists(reportFile)) {
+                        def report = readJSON file: reportFile
+                        def criticalIssues = report.executiveSummary?.criticalIssues ?: 0
+
+                        if (criticalIssues > 0) {
+                            echo "🚨 Critical security issues found: ${criticalIssues}"
+                            currentBuild.result = 'FAILURE'
+                            error("Security quality gate failed: ${criticalIssues} critical issues")
+                        } else {
+                            echo "✅ Security quality gate passed"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Cleanup
+            sh 'rm -rf security-results'
+        }
+
+        failure {
+            script {
+                if (env.CHANGE_ID) {
+                    // Comment on PR if this is a PR build
+                    def comment = "## 🚨 Security Analysis Failed\\n\\n"
+                    comment += "The security analysis detected critical issues.\\n"
+                    comment += "Please review the security report for details.\\n\\n"
+                    comment += "[View Report](\${BUILD_URL}Security_20Analysis_20Report/)"
+
+                    pullRequest.comment(comment)
+                }
+            }
+        }
+    }
+}
+
+## Azure DevOps Pipeline Example
+trigger:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  CHUTES_API_KEY: $(chutesApiKey)
+  GRAPH_DATA_URL: $(graphDataUrl)
+
+stages:
+  - stage: SecurityAnalysis
+    jobs:
+      - job: Analyze
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '18.x'
+
+          - script: |
+              npm install
+              chmod +x sec-analyzer.js
+              ./sec-analyzer.js init
+            displayName: 'Setup Security Analyzer'
+
+          - script: |
+              curl -o php_graph.json "$(GRAPH_DATA_URL)" || {
+                echo "Failed to download graph data"
+                # ./generate-graph.sh > php_graph.json
+              }
+            displayName: 'Download Graph Data'
+
+          - script: |
+              ./sec-analyzer.js pipeline \
+                --graph php_graph.json \
+                --git-diff origin/main \
+                --output-dir security-results
+            displayName: 'Run Security Analysis'
+            env:
+              CHUTES_API_KEY: $(CHUTES_API_KEY)
+
+          - publish: security-results
+            artifact: SecurityAnalysisResults
+            displayName: 'Publish Security Results'
+
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFiles: 'security-results/junit-report.xml'
+              testRunTitle: 'Security Analysis Results'
+
+## CircleCI Example
+version: 2.1
+
+executors:
+  node-executor:
+    docker:
+      - image: cimg/node:18
+
+workflows:
+  security-analysis:
+    jobs:
+      - security-scan:
+          filters:
+            branches:
+              only:
+                - main
+                - develop
+
+jobs:
+  security-scan:
+    executor: node-executor
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "package.json" }}
+
+      - run:
+          name: Install dependencies
+          command: |
+            npm install
+            chmod +x sec-analyzer.js
+
+      - save_cache:
+          paths:
+            - node_modules
+          key: v1-dependencies-{{ checksum "package.json" }}
+
+      - run:
+          name: Initialize Security Analyzer
+          command: ./sec-analyzer.js init
+          environment:
+            CHUTES_API_KEY: $CHUTES_API_KEY
+
+      - run:
+          name: Download Graph Data
+          command: |
+            curl -o php_graph.json "${GRAPH_DATA_URL:-https://storage.googleapis.com/your-security-data/php_graph.json}" || {
+              echo "Failed to download graph data, generating fresh..."
+              chmod +x ./generate-php-graph.sh
+              ./generate-php-graph.sh
+            }
+
+      - run:
+          name: Run Security Analysis
+          command: |
+            ./sec-analyzer.js pipeline \
+              --graph php_graph.json \
+              --git-diff origin/main \
+              --output-dir security-results
+          environment:
+            CHUTES_API_KEY: $CHUTES_API_KEY
+
+      - store_artifacts:
+          path: security-results/
+          destination: security-analysis-results
+
+      - run:
+          name: Check for Critical Issues
+          command: |
+            if [ -f "security-results/security-report.json" ]; then
+              CRITICAL_COUNT=$(jq '.executiveSummary.criticalIssues // 0' security-results/security-report.json)
+              if [ "$CRITICAL_COUNT" -gt 0 ]; then
+                echo "🚨 Critical security issues found: $CRITICAL_COUNT"
+                exit 1
+              fi
+            fi
+
+## Local Development Setup
+# For local development and testing
+
+#!/bin/bash
+# run-security-analysis.sh
+
+# Configuration
+CHUTES_API_KEY="your-api-key-here"
+GRAPH_FILE="php_graph.json"
+OUTPUT_DIR="security-analysis-results"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Functions
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check prerequisites
+check_prerequisites() {
+    log_info "Checking prerequisites..."
+
+    if ! command -v node &> /dev/null; then
+        log_error "Node.js is not installed. Please install Node.js 16+"
+        exit 1
+    fi
+
+    if ! command -v git &> /dev/null; then
+        log_error "Git is not installed. Please install Git"
+        exit 1
+    fi
+
+    if [ -z "$CHUTES_API_KEY" ]; then
+        log_error "CHUTES_API_KEY is not set"
+        exit 1
+    fi
+
+    log_success "Prerequisites check passed"
+}
+
+# Setup
+setup() {
+    log_info "Setting up security analyzer..."
+
+    # Install dependencies if needed
+    if [ ! -d "node_modules" ]; then
+        log_info "Installing dependencies..."
+        npm install
+    fi
+
+    # Make executable
+    chmod +x sec-analyzer.js
+
+    # Initialize
+    log_info "Initializing security analyzer..."
+    ./sec-analyzer.js init
+
+    log_success "Setup completed"
+}
+
+# Run analysis
+run_analysis() {
+    log_info "Starting security analysis..."
+
+    # Create output directory
+    mkdir -p "$OUTPUT_DIR"
+
+    # Get the commit to compare against
+    if [ -n "$1" ]; then
+        BASE_COMMIT="$1"
+    else
+        BASE_COMMIT="HEAD~1"
+    fi
+
+    log_info "Analyzing changes since: $BASE_COMMIT"
+
+    # Check if graph file exists
+    if [ ! -f "$GRAPH_FILE" ]; then
+        log_warning "Graph file $GRAPH_FILE not found. Attempting to download..."
+        # Try to download or generate
+        # curl -o "$GRAPH_FILE" "https://your-storage.example.com/$GRAPH_FILE" || {
+        #     log_error "Could not obtain graph data. Please ensure $GRAPH_FILE exists or set GRAPH_DATA_URL"
+        #     exit 1
+        # }
+        log_error "Graph file not found. Please ensure $GRAPH_FILE exists in the current directory"
+        exit 1
+    fi
+
+    # Run the analysis
+    log_info "Running security analysis pipeline..."
+    ./sec-analyzer.js pipeline \
+        --graph "$GRAPH_FILE" \
+        --git-diff "$BASE_COMMIT" \
+        --output-dir "$OUTPUT_DIR"
+
+    if [ $? -eq 0 ]; then
+        log_success "Security analysis completed successfully"
+    else
+        log_error "Security analysis failed"
+        exit 1
+    fi
+}
+
+# Generate summary
+generate_summary() {
+    log_info "Generating analysis summary..."
+
+    REPORT_FILE="$OUTPUT_DIR/security-report.json"
+
+    if [ -f "$REPORT_FILE" ]; then
+        # Extract key metrics
+        TOTAL_FINDINGS=$(jq '.executiveSummary.totalFindings // 0' "$REPORT_FILE")
+        CRITICAL_ISSUES=$(jq '.executiveSummary.criticalIssues // 0' "$REPORT_FILE")
+        HIGH_RISK=$(jq '.executiveSummary.highRiskIssues // 0' "$REPORT_FILE")
+        OVERALL_RISK=$(jq -r '.executiveSummary.overallRisk // "Unknown"' "$REPORT_FILE")
+
+        echo ""
+        echo "=========================================="
+        echo "🔒 SECURITY ANALYSIS SUMMARY"
+        echo "=========================================="
+        echo "📊 Total Findings: $TOTAL_FINDINGS"
+        echo "🚨 Critical Issues: $CRITICAL_ISSUES"
+        echo "⚠️  High Risk Issues: $HIGH_RISK"
+        echo "🎯 Overall Risk: $OVERALL_RISK"
+        echo "=========================================="
+        echo ""
+        echo "📁 Results saved to: $OUTPUT_DIR"
+        echo "📋 HTML Report: $OUTPUT_DIR/security-report.html"
+        echo "📄 JSON Report: $OUTPUT_DIR/security-report.json"
+        echo ""
+
+        # Show recommendations
+        if [ "$CRITICAL_ISSUES" -gt 0 ]; then
+            log_error "⚠️  CRITICAL ISSUES DETECTED!"
+            log_error "   Please review the HTML report immediately"
+            echo ""
+        elif [ "$TOTAL_FINDINGS" -gt 0 ]; then
+            log_warning "⚠️  Security issues found"
+            log_warning "   Please review the HTML report"
+            echo ""
+        else
+            log_success "✅ No security issues detected"
+            echo ""
+        fi
+    else
+        log_error "Report file not found: $REPORT_FILE"
+    fi
+}
+
+# Main execution
+main() {
+    echo "🔒 Security Analysis Pipeline"
+    echo "============================"
+
+    check_prerequisites
+    setup
+    run_analysis "$@"
+    generate_summary
+
+    echo "🎉 Security analysis pipeline completed!"
+}
+
+# Run main function with all arguments
+main "$@"
