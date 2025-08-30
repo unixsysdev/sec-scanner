@@ -2922,15 +2922,214 @@ function getHTML() {
             }
 
             async loadDemoData() {
-                // Note: Google Drive links require special handling due to CORS
-                // For demo purposes, we'll use a placeholder that shows the functionality
-                const demoUrl = 'https://raw.githubusercontent.com/octocat/Hello-World/master/README.md';
+                // Show loading state
+                this.showUploadProgress('Loading Demo Data...', 'Preparing sample graph data...');
 
-                alert('Demo data loading is configured but requires a CORS-enabled hosting service.\\n\\nFor production, host the php_graph.json file on a service like:\\n• GitHub Gist\\n• Raw GitHub files\\n• Netlify\\n• Vercel\\n• Or any CORS-enabled hosting\\n\\nCurrent demo uses a placeholder file.');
-                return;
+                try {
+                    this.updateUploadProgress(30, 'Processing demo data...', 'Building graph structure...');
 
-                // Original demo URL (commented out until proper hosting is set up):
-                // const demoUrl = 'https://drive.google.com/uc?export=download&id=1vOTuQ_HQwd37H7-yJik49bJVqt2Zi4BF';
+                    // Use embedded sample data
+                    const graphData = this.getSampleGraphData();
+
+                    this.updateUploadProgress(70, 'Initializing visualization...', 'Setting up graph components...');
+
+                    // Simulate processing time for better UX
+                    await new Promise(resolve => setTimeout(resolve, 800));
+
+                    this.fullGraph = graphData;
+                    this.processGraph();
+
+                    this.updateUploadProgress(100, 'Demo loaded successfully!', 'Ready to explore sample data');
+                    await new Promise(resolve => setTimeout(resolve, 300));
+
+                    // Hide loading and show content
+                    this.hideUploadProgress();
+                    document.getElementById('dropZone').style.display = 'none';
+                    document.getElementById('sidebar-content').style.display = 'block';
+
+                } catch (error) {
+                    this.hideUploadProgress();
+                    alert('Failed to load demo data: ' + error.message);
+                }
+            }
+
+            getSampleGraphData() {
+                return {
+                    "nodes": [
+                        {
+                            "id": "App\\\\Controller\\\\UserController",
+                            "label": "UserController",
+                            "type": "class",
+                            "file": "src/Controller/UserController.php",
+                            "line": 15,
+                            "in_degree": 3,
+                            "out_degree": 5
+                        },
+                        {
+                            "id": "App\\\\Service\\\\UserService",
+                            "label": "UserService",
+                            "type": "class",
+                            "file": "src/Service/UserService.php",
+                            "line": 12,
+                            "in_degree": 2,
+                            "out_degree": 4
+                        },
+                        {
+                            "id": "App\\\\Repository\\\\UserRepository",
+                            "label": "UserRepository",
+                            "type": "class",
+                            "file": "src/Repository/UserRepository.php",
+                            "line": 8,
+                            "in_degree": 1,
+                            "out_degree": 3
+                        },
+                        {
+                            "id": "App\\\\Entity\\\\User",
+                            "label": "User",
+                            "type": "class",
+                            "file": "src/Entity/User.php",
+                            "line": 10,
+                            "in_degree": 4,
+                            "out_degree": 2
+                        },
+                        {
+                            "id": "App\\\\Controller\\\\UserController::getUsers",
+                            "label": "getUsers",
+                            "type": "method",
+                            "file": "src/Controller/UserController.php",
+                            "line": 25,
+                            "in_degree": 1,
+                            "out_degree": 2
+                        },
+                        {
+                            "id": "App\\\\Controller\\\\UserController::createUser",
+                            "label": "createUser",
+                            "type": "method",
+                            "file": "src/Controller/UserController.php",
+                            "line": 45,
+                            "in_degree": 0,
+                            "out_degree": 3
+                        },
+                        {
+                            "id": "App\\\\Service\\\\UserService::findAll",
+                            "label": "findAll",
+                            "type": "method",
+                            "file": "src/Service/UserService.php",
+                            "line": 20,
+                            "in_degree": 2,
+                            "out_degree": 1
+                        },
+                        {
+                            "id": "App\\\\Service\\\\UserService::create",
+                            "label": "create",
+                            "type": "method",
+                            "file": "src/Service/UserService.php",
+                            "line": 35,
+                            "in_degree": 1,
+                            "out_degree": 2
+                        },
+                        {
+                            "id": "App\\\\Repository\\\\UserRepository::findAll",
+                            "label": "findAll",
+                            "type": "method",
+                            "file": "src/Repository/UserRepository.php",
+                            "line": 18,
+                            "in_degree": 1,
+                            "out_degree": 0
+                        },
+                        {
+                            "id": "App\\\\Repository\\\\UserRepository::save",
+                            "label": "save",
+                            "type": "method",
+                            "file": "src/Repository/UserRepository.php",
+                            "line": 30,
+                            "in_degree": 2,
+                            "out_degree": 0
+                        }
+                    ],
+                    "edges": [
+                        {
+                            "source": "App\\\\Controller\\\\UserController",
+                            "target": "App\\\\Service\\\\UserService",
+                            "type": "method_call",
+                            "weight": 2
+                        },
+                        {
+                            "source": "App\\\\Controller\\\\UserController",
+                            "target": "App\\\\Entity\\\\User",
+                            "type": "instantiates",
+                            "weight": 1
+                        },
+                        {
+                            "source": "App\\\\Service\\\\UserService",
+                            "target": "App\\\\Repository\\\\UserRepository",
+                            "type": "method_call",
+                            "weight": 3
+                        },
+                        {
+                            "source": "App\\\\Service\\\\UserService",
+                            "target": "App\\\\Entity\\\\User",
+                            "type": "instantiates",
+                            "weight": 1
+                        },
+                        {
+                            "source": "App\\\\Repository\\\\UserRepository",
+                            "target": "App\\\\Entity\\\\User",
+                            "type": "extends",
+                            "weight": 1
+                        },
+                        {
+                            "source": "App\\\\Controller\\\\UserController::getUsers",
+                            "target": "App\\\\Service\\\\UserService::findAll",
+                            "type": "method_call",
+                            "weight": 1
+                        },
+                        {
+                            "source": "App\\\\Controller\\\\UserController::createUser",
+                            "target": "App\\\\Service\\\\UserService::create",
+                            "type": "method_call",
+                            "weight": 1
+                        },
+                        {
+                            "source": "App\\\\Controller\\\\UserController::createUser",
+                            "target": "App\\\\Entity\\\\User",
+                            "type": "instantiates",
+                            "weight": 1
+                        },
+                        {
+                            "source": "App\\\\Service\\\\UserService::findAll",
+                            "target": "App\\\\Repository\\\\UserRepository::findAll",
+                            "type": "method_call",
+                            "weight": 1
+                        },
+                        {
+                            "source": "App\\\\Service\\\\UserService::create",
+                            "target": "App\\\\Repository\\\\UserRepository::save",
+                            "type": "method_call",
+                            "weight": 1
+                        },
+                        {
+                            "source": "App\\\\Service\\\\UserService::create",
+                            "target": "App\\\\Entity\\\\User",
+                            "type": "instantiates",
+                            "weight": 1
+                        },
+                        {
+                            "source": "App\\\\Repository\\\\UserRepository::save",
+                            "target": "App\\\\Entity\\\\User",
+                            "type": "static_call",
+                            "weight": 1
+                        }
+                    ],
+                    "stats": {
+                        "total_nodes": 10,
+                        "total_edges": 12,
+                        "classes": 4,
+                        "methods": 6,
+                        "functions": 0
+                    }
+                };
+            }
 
                 // Show loading state
                 this.showUploadProgress('Loading Demo Data...', 'Fetching sample data from AlpinResorts repositories...');
