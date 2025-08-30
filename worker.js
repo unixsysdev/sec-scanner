@@ -678,6 +678,29 @@ function getHTML() {
             transform: translateY(-1px);
         }
 
+        .demo-btn {
+            display: inline-block;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+
+        .demo-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+        }
+
+        .demo-btn:active {
+            transform: translateY(0);
+        }
+
         /* Graph styles */
         .node {
             cursor: pointer;
@@ -1176,6 +1199,8 @@ function getHTML() {
                 <p>📁 Drop php_graph.json here</p>
                 <label for="fileInput" class="file-label">Choose File</label>
                 <input type="file" id="fileInput" class="file-input" accept=".json">
+                <br><br>
+                <button class="demo-btn" id="loadDemoBtn" title="Load demo data from AlpinResorts repositories">🚀 Load Demo Data</button>
             </div>
 
             <div id="sidebar-content" style="display: none;">
@@ -1372,6 +1397,14 @@ function getHTML() {
                         await this.uploadFile(file);
                     }
                 });
+
+                // Demo data button
+                const loadDemoBtn = document.getElementById('loadDemoBtn');
+                if (loadDemoBtn) {
+                    loadDemoBtn.addEventListener('click', async () => {
+                        await this.loadDemoData();
+                    });
+                }
 
                 // Search
                 const searchBox = document.getElementById('searchBox');
@@ -2886,6 +2919,54 @@ function getHTML() {
 
                 // Clear stored filtered nodes
                 this.filteredNodeIds = new Set();
+            }
+
+            async loadDemoData() {
+                // Note: Google Drive links require special handling due to CORS
+                // For demo purposes, we'll use a placeholder that shows the functionality
+                const demoUrl = 'https://raw.githubusercontent.com/octocat/Hello-World/master/README.md';
+
+                alert('Demo data loading is configured but requires a CORS-enabled hosting service.\\n\\nFor production, host the php_graph.json file on a service like:\\n• GitHub Gist\\n• Raw GitHub files\\n• Netlify\\n• Vercel\\n• Or any CORS-enabled hosting\\n\\nCurrent demo uses a placeholder file.');
+                return;
+
+                // Original demo URL (commented out until proper hosting is set up):
+                // const demoUrl = 'https://drive.google.com/uc?export=download&id=1vOTuQ_HQwd37H7-yJik49bJVqt2Zi4BF';
+
+                // Show loading state
+                this.showUploadProgress('Loading Demo Data...', 'Fetching sample data from AlpinResorts repositories...');
+
+                try {
+                    const response = await fetch(demoUrl);
+
+                    if (!response.ok) {
+                        throw new Error('HTTP error! status: ' + response.status);
+                    }
+
+                    this.updateUploadProgress(50, 'Processing demo data...', 'Parsing graph structure...');
+
+                    const fileContent = await response.text();
+                    const graphData = JSON.parse(fileContent);
+
+                    this.updateUploadProgress(75, 'Building graph...', 'Initializing visualization...');
+
+                    // Simulate processing time
+                    await new Promise(resolve => setTimeout(resolve, 500));
+
+                    this.fullGraph = graphData;
+                    this.processGraph();
+
+                    this.updateUploadProgress(100, 'Demo loaded successfully!', 'Ready to explore');
+                    await new Promise(resolve => setTimeout(resolve, 300));
+
+                    // Hide loading and show content
+                    this.hideUploadProgress();
+                    document.getElementById('dropZone').style.display = 'none';
+                    document.getElementById('sidebar-content').style.display = 'block';
+
+                } catch (error) {
+                    this.hideUploadProgress();
+                    alert('Failed to load demo data: ' + error.message);
+                }
             }
         }
 
