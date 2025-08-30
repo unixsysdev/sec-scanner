@@ -3130,43 +3130,7 @@ function getHTML() {
                     }
                 };
             }
-
-                // Show loading state
-                this.showUploadProgress('Loading Demo Data...', 'Fetching sample data from AlpinResorts repositories...');
-
-                try {
-                    const response = await fetch(demoUrl);
-
-                    if (!response.ok) {
-                        throw new Error('HTTP error! status: ' + response.status);
-                    }
-
-                    this.updateUploadProgress(50, 'Processing demo data...', 'Parsing graph structure...');
-
-                    const fileContent = await response.text();
-                    const graphData = JSON.parse(fileContent);
-
-                    this.updateUploadProgress(75, 'Building graph...', 'Initializing visualization...');
-
-                    // Simulate processing time
-                    await new Promise(resolve => setTimeout(resolve, 500));
-
-                    this.fullGraph = graphData;
-                    this.processGraph();
-
-                    this.updateUploadProgress(100, 'Demo loaded successfully!', 'Ready to explore');
-                    await new Promise(resolve => setTimeout(resolve, 300));
-
-                    // Hide loading and show content
-                    this.hideUploadProgress();
-                    document.getElementById('dropZone').style.display = 'none';
-                    document.getElementById('sidebar-content').style.display = 'block';
-
-                } catch (error) {
-                    this.hideUploadProgress();
-                    alert('Failed to load demo data: ' + error.message);
-                }
-            }
+        }
         }
 
         const explorer = new GraphExplorer();
